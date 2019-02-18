@@ -594,8 +594,28 @@ export const cloneWindow = (
     referenceElement: HTMLElement,
     options: Options,
     logger: Logger,
-    renderer: (element: HTMLElement, options: Options, logger: Logger) => Promise<*>
+    renderer: (element: HTMLElement, options: Options, logger: Logger) => Promise<*>,
+    onCloneWindowReady?: (DocumentCloner, HTMLIFrameElement) => boolean,
+    existingCloner?: DocumentCloner,
+    iFrameContainerRef?: HTMLIFrameElement
 ): Promise<[HTMLIFrameElement, HTMLElement, ResourceLoader]> => {
+    if (existingCloner && iFrameContainerRef) {
+        const parentSelector = getParentNodeSelector(referenceElement);
+        const childIndex = getChildNodeIndex(referenceElement);
+        const clonedElement = iFrameContainerRef.contentWindow.document.querySelector(
+            parentSelector
+        ).children[childIndex];
+        return reuseWindow(
+            ownerDocument,
+            bounds,
+            clonedElement,
+            options,
+            logger,
+            renderer,
+            existingCloner,
+            iFrameContainerRef
+        );
+    }
     const cloner = new DocumentCloner(referenceElement, options, logger, false, renderer);
     const scrollX = ownerDocument.defaultView.pageXOffset;
     const scrollY = ownerDocument.defaultView.pageYOffset;
@@ -628,11 +648,17 @@ export const cloneWindow = (
 
             const onclone = options.onclone;
 
+            if (onCloneWindowReady) {
+                onCloneWindowReady(cloner, cloneIframeContainer);
+            }
+
             return cloner.clonedReferenceElement instanceof cloneWindow.HTMLElement ||
             cloner.clonedReferenceElement instanceof ownerDocument.defaultView.HTMLElement ||
             cloner.clonedReferenceElement instanceof HTMLElement
                 ? typeof onclone === 'function'
-                  ? Promise.resolve().then(() => onclone(documentClone)).then(() => result)
+                  ? Promise.resolve()
+                        .then(() => onclone(documentClone, cloner, cloneIframeContainer))
+                        .then(() => result)
                   : result
                 : Promise.reject(
                       __DEV__
@@ -650,6 +676,57 @@ export const cloneWindow = (
             documentClone.documentElement
         );
         documentClone.close();
+
+        return iframeLoad;
+    });
+};
+
+export const reuseWindow = (
+    ownerDocument: Document,
+    bounds: Bounds,
+    clonedElement: HTMLElement,
+    options: Options,
+    logger: Logger,
+    renderer: (element: HTMLElement, options: Options, logger: Logger) => Promise<*>,
+    cloner: DocumentCloner,
+    iFrameContainerRef: HTMLIFrameElement
+): Promise<[HTMLIFrameElement, HTMLElement, ResourceLoader]> => {
+    return Promise.resolve(iFrameContainerRef).then(cloneIframeContainer => {
+        const cloneWindow = cloneIframeContainer.contentWindow;
+        const documentClone = cloneWindow.document;
+
+        /* Chrome doesn't detect relative background-images assigned in inline <style> sheets when fetched through getComputedStyle
+                if window url is about:blank, we can assign the url to current by writing onto the document
+                */
+
+        const iframeLoad = Promise.resolve(cloneIframeContainer).then(() => {
+            // cloner.scrolledElements.forEach(initNode);
+            cloneWindow.scrollTo(bounds.left, bounds.top);
+            if (
+                /(iPad|iPhone|iPod)/g.test(navigator.userAgent) &&
+                (cloneWindow.scrollY !== bounds.top || cloneWindow.scrollX !== bounds.left)
+            ) {
+                documentClone.documentElement.style.top = -bounds.top + 'px';
+                documentClone.documentElement.style.left = -bounds.left + 'px';
+                documentClone.documentElement.style.position = 'absolute';
+            }
+
+            const result = Promise.resolve([
+                cloneIframeContainer,
+                clonedElement,
+                cloner.resourceLoader
+            ]);
+
+            return clonedElement instanceof cloneWindow.HTMLElement ||
+            clonedElement instanceof ownerDocument.defaultView.HTMLElement ||
+            clonedElement instanceof HTMLElement
+                ? result
+                : Promise.reject(
+                      __DEV__
+                          ? `Error finding the ${clonedElement.nodeName} in the cloned document`
+                          : ''
+                  );
+        });
 
         return iframeLoad;
     });
@@ -680,3 +757,38 @@ const serializeDoctype = (doctype: ?DocumentType): string => {
 
     return str;
 };
+
+function getParentNodeSelector(element) {
+    var path = '',
+        i,
+        innerText,
+        tag,
+        selector,
+        classes;
+
+    for (i = 0; element && element.nodeType == 1; element = element.parentNode, i++) {
+        if (i == 0) continue;
+        innerText = element.childNodes.length === 0 ? element.innerHTML : '';
+        tag = element.tagName.toLowerCase();
+        classes = element.className;
+
+        if (tag === 'html' || tag === 'body') {
+            continue;
+        }
+
+        if (element.id !== '') {
+            selector = '#' + element.id;
+        } else if (classes.length > 0) {
+            selector = tag + '.' + classes.replace(/ /g, '.');
+        } else {
+            selector = tag;
+        }
+        path = ' ' + selector + path;
+    }
+    return path;
+}
+
+function getChildNodeIndex(child) {
+    var parent = child.parentNode;
+    return Array.prototype.indexOf.call(parent.children, child);
+}

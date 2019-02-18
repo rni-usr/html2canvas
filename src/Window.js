@@ -19,7 +19,10 @@ import {parseBounds, parseDocumentSize} from './Bounds';
 export const renderElement = (
     element: HTMLElement,
     options: Options,
-    logger: Logger
+    logger: Logger,
+    onCloneWindowReady?: (DocumentCloner, HTMLIFrameElement) => boolean,
+    cloner?: DocumentCloner,
+    iFrameContainerRef?: HTMLIFrameElement
 ): Promise<*> => {
     const ownerDocument = element.ownerDocument;
 
@@ -102,7 +105,10 @@ export const renderElement = (
                       element,
                       options,
                       logger,
-                      renderElement
+                      renderElement,
+                      onCloneWindowReady,
+                      cloner,
+                      iFrameContainerRef
                   ).then(([container, clonedElement, resourceLoader]) => {
                       if (__DEV__) {
                           logger.log(`Document cloned, using computed rendering`);
