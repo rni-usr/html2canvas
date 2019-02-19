@@ -20,7 +20,7 @@ export const renderElement = (
     element: HTMLElement,
     options: Options,
     logger: Logger,
-    onCloneWindowReady?: (DocumentCloner, HTMLIFrameElement) => boolean,
+    onCloneWindowReady?: (DocumentCloner, HTMLIFrameElement) => void,
     cloner?: DocumentCloner,
     iFrameContainerRef?: HTMLIFrameElement
 ): Promise<*> => {

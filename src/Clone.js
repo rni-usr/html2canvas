@@ -595,7 +595,7 @@ export const cloneWindow = (
     options: Options,
     logger: Logger,
     renderer: (element: HTMLElement, options: Options, logger: Logger) => Promise<*>,
-    onCloneWindowReady?: (DocumentCloner, HTMLIFrameElement) => boolean,
+    onCloneWindowReady?: (DocumentCloner, HTMLIFrameElement) => void,
     existingCloner?: DocumentCloner,
     iFrameContainerRef?: HTMLIFrameElement
 ): Promise<[HTMLIFrameElement, HTMLElement, ResourceLoader]> => {
@@ -758,7 +758,7 @@ const serializeDoctype = (doctype: ?DocumentType): string => {
     return str;
 };
 
-function getParentNodeSelector(element) {
+function getParentNodeSelector(child: Node) {
     var path = '',
         i,
         innerText,
@@ -766,29 +766,41 @@ function getParentNodeSelector(element) {
         selector,
         classes;
 
-    for (i = 0; element && element.nodeType == 1; element = element.parentNode, i++) {
-        if (i == 0) continue;
-        innerText = element.childNodes.length === 0 ? element.innerHTML : '';
-        tag = element.tagName.toLowerCase();
-        classes = element.className;
+    if (child && child.nodeType && child.nodeType == 1 && child.parentNode) {
+        let element = child.parentNode;
+        while (element && element.nodeType == 1) {
+            const tag = element.nodeName.toLowerCase();
+            // $FlowFixMe
+            const classes = element.className;
+            // $FlowFixMe
+            const id = element.id;
 
-        if (tag === 'html' || tag === 'body') {
-            continue;
-        }
+            if (tag === 'html' || tag === 'body') {
+                return tag + ' ' + path;
+            }
 
-        if (element.id !== '') {
-            selector = '#' + element.id;
-        } else if (classes.length > 0) {
-            selector = tag + '.' + classes.replace(/ /g, '.');
-        } else {
-            selector = tag;
+            if (id !== '') {
+                // $FlowFixMe
+                selector = '#' + id;
+            } else if (classes.length > 0) {
+                selector = tag + '.' + classes.replace(/ /g, '.');
+            } else {
+                selector = tag;
+            }
+            path = ' ' + selector + path;
+            element = element.parentNode;
         }
-        path = ' ' + selector + path;
+    } else {
+        throw new Error('Element for rendering is not specified');
     }
     return path;
 }
 
 function getChildNodeIndex(child) {
-    var parent = child.parentNode;
-    return Array.prototype.indexOf.call(parent.children, child);
+    const parent = child.parentNode;
+    if (parent && parent.children) {
+        return Array.prototype.indexOf.call(parent.children, child);
+    } else {
+        return -1;
+    }
 }
