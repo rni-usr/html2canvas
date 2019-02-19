@@ -18,7 +18,7 @@ export type Options = {
     imageTimeout: number,
     logging: boolean,
     onclone?: (Document, DocumentCloner, HTMLIFrameElement) => void,
-    onrendered?: (DocumentCloner, HTMLIFrameElement) => boolean,
+    onrendered?: HTMLCanvasElement => boolean,
     proxy: ?string,
     removeContainer: ?boolean,
     scale: number,
@@ -55,15 +55,6 @@ function getOptions(ownerDocument, config) {
     };
 }
 
-function cloneCanvas(oldCanvas) {
-    var newCanvas = document.createElement('canvas');
-    var context = newCanvas.getContext('2d');
-    newCanvas.width = oldCanvas.width;
-    newCanvas.height = oldCanvas.height;
-    context.drawImage(oldCanvas, 0, 0);
-    return newCanvas;
-}
-
 const html2canvas = (element: HTMLElement, conf: ?Options): Promise<*> => {
     const config = conf || {};
     const logger = new Logger(typeof config.logging === 'boolean' ? config.logging : true);
@@ -96,10 +87,8 @@ const html2canvas = (element: HTMLElement, conf: ?Options): Promise<*> => {
         }
         return result;
     } else {
-        if (__DEV__ && !config.resolveCanvases && typeof config.onrendered === 'function') {
-            logger.error(
-                'onrendered option is not provided, you must use it to get rendered data if resolveCanvases is set to true'
-            );
+        if (__DEV__ && typeof config.onrendered !== 'function') {
+            logger.error('onrendered option must be provided on rendering multiple elements');
         }
         const elements = Array.prototype.slice.call(element);
         for (let i = 0; i < elements.length; i++) {
@@ -111,8 +100,7 @@ const html2canvas = (element: HTMLElement, conf: ?Options): Promise<*> => {
         const defaultOptions = getOptions(elements[0].ownerDocument, config);
         const options = {...defaultOptions, ...config};
 
-        let cloner = null,
-            iFrameContainerRef = null;
+        let cloner, iFrameContainerRef;
         const removeContainer = elements.length > 1 ? false : options.removeContainer;
         const result = renderElement(
             elements[0],
@@ -124,12 +112,10 @@ const html2canvas = (element: HTMLElement, conf: ?Options): Promise<*> => {
             }
         ).then(function(canvas) {
             let chain = null;
-            if (options.resolveCanvases) {
-                chain = Promise.resolve([cloneCanvas(canvas)]);
-            } else {
-                options.onrendered(canvas) || Promise.reject('Rendering was stopped by request');
-                chain = Promise.resolve(1);
-            }
+
+            options.onrendered(canvas) || Promise.reject('Rendering was stopped by request');
+            chain = Promise.resolve(1);
+
             for (let i = 1; i < elements.length; i++) {
                 const removeContainer = i < elements.length - 1 ? false : options.removeContainer;
                 const idx = i;
@@ -138,18 +124,13 @@ const html2canvas = (element: HTMLElement, conf: ?Options): Promise<*> => {
                         elements[idx],
                         {...options, removeContainer},
                         logger,
-                        null,
+                        undefined,
                         cloner,
                         iFrameContainerRef
                     ).then(function(canvas) {
-                        if (options.resolveCanvases) {
-                            canvases.push(cloneCanvas(canvas));
-                            return canvases;
-                        } else {
-                            return options.onrendered(canvas)
-                                ? canvases++
-                                : Promise.reject('Rendering was stopped by request');
-                        }
+                        return options.onrendered(canvas)
+                            ? canvases++
+                            : Promise.reject('Rendering was stopped by request');
                     });
                 });
             }
