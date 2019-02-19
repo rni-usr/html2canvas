@@ -37,15 +37,6 @@ function getOptions(ownerDocument, config) {
     };
 }
 
-function cloneCanvas(oldCanvas) {
-    var newCanvas = document.createElement('canvas');
-    var context = newCanvas.getContext('2d');
-    newCanvas.width = oldCanvas.width;
-    newCanvas.height = oldCanvas.height;
-    context.drawImage(oldCanvas, 0, 0);
-    return newCanvas;
-}
-
 var html2canvas = function html2canvas(element, conf) {
     var config = conf || {};
     var logger = new _Logger2.default(typeof config.logging === 'boolean' ? config.logging : true);
@@ -74,8 +65,8 @@ var html2canvas = function html2canvas(element, conf) {
         }
         return result;
     } else {
-        if (process.env.NODE_ENV !== 'production' && !config.resolveCanvases && typeof config.onrendered === 'function') {
-            logger.error('onrendered option is not provided, you must use it to get rendered data if resolveCanvases is set to true');
+        if (process.env.NODE_ENV !== 'production' && typeof config.onrendered !== 'function') {
+            logger.error('onrendered option must be provided on rendering multiple elements');
         }
         var elements = Array.prototype.slice.call(element);
         for (var i = 0; i < elements.length; i++) {
@@ -87,32 +78,24 @@ var html2canvas = function html2canvas(element, conf) {
         var _defaultOptions = getOptions(elements[0].ownerDocument, config);
         var options = _extends({}, _defaultOptions, config);
 
-        var cloner = null,
-            iFrameContainerRef = null;
+        var cloner = void 0,
+            iFrameContainerRef = void 0;
         var _removeContainer = elements.length > 1 ? false : options.removeContainer;
         var _result = (0, _Window.renderElement)(elements[0], _extends({}, options, { removeContainer: _removeContainer }), logger, function (c, iframe) {
             cloner = c;
             iFrameContainerRef = iframe;
         }).then(function (canvas) {
             var chain = null;
-            if (options.resolveCanvases) {
-                chain = Promise.resolve([cloneCanvas(canvas)]);
-            } else {
-                options.onrendered(canvas) || Promise.reject('Rendering was stopped by request');
-                chain = Promise.resolve(1);
-            }
+
+            options.onrendered(canvas) || Promise.reject('Rendering was stopped by request');
+            chain = Promise.resolve(1);
 
             var _loop = function _loop(_i) {
                 var removeContainer = _i < elements.length - 1 ? false : options.removeContainer;
                 var idx = _i;
                 chain = chain.then(function (canvases) {
-                    return (0, _Window.renderElement)(elements[idx], _extends({}, options, { removeContainer: removeContainer }), logger, null, cloner, iFrameContainerRef).then(function (canvas) {
-                        if (options.resolveCanvases) {
-                            canvases.push(cloneCanvas(canvas));
-                            return canvases;
-                        } else {
-                            return options.onrendered(canvas) ? canvases++ : Promise.reject('Rendering was stopped by request');
-                        }
+                    return (0, _Window.renderElement)(elements[idx], _extends({}, options, { removeContainer: removeContainer }), logger, undefined, cloner, iFrameContainerRef).then(function (canvas) {
+                        return options.onrendered(canvas) ? canvases++ : Promise.reject('Rendering was stopped by request');
                     });
                 });
             };

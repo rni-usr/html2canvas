@@ -3869,7 +3869,7 @@ var serializeDoctype = function serializeDoctype(doctype) {
     return str;
 };
 
-function getParentNodeSelector(element) {
+function getParentNodeSelector(child) {
     var path = '',
         i,
         innerText,
@@ -3877,31 +3877,43 @@ function getParentNodeSelector(element) {
         selector,
         classes;
 
-    for (i = 0; element && element.nodeType == 1; element = element.parentNode, i++) {
-        if (i == 0) continue;
-        innerText = element.childNodes.length === 0 ? element.innerHTML : '';
-        tag = element.tagName.toLowerCase();
-        classes = element.className;
+    if (child && child.nodeType && child.nodeType == 1 && child.parentNode) {
+        var _element = child.parentNode;
+        while (_element && _element.nodeType == 1) {
+            var _tag = _element.nodeName.toLowerCase();
+            // $FlowFixMe
+            var _classes = _element.className;
+            // $FlowFixMe
+            var id = _element.id;
 
-        if (tag === 'html' || tag === 'body') {
-            continue;
-        }
+            if (_tag === 'html' || _tag === 'body') {
+                return _tag + ' ' + path;
+            }
 
-        if (element.id !== '') {
-            selector = '#' + element.id;
-        } else if (classes.length > 0) {
-            selector = tag + '.' + classes.replace(/ /g, '.');
-        } else {
-            selector = tag;
+            if (id !== '') {
+                // $FlowFixMe
+                selector = '#' + id;
+            } else if (_classes.length > 0) {
+                selector = _tag + '.' + _classes.replace(/ /g, '.');
+            } else {
+                selector = _tag;
+            }
+            path = ' ' + selector + path;
+            _element = _element.parentNode;
         }
-        path = ' ' + selector + path;
+    } else {
+        throw new Error('Element for rendering is not specified');
     }
     return path;
 }
 
 function getChildNodeIndex(child) {
     var parent = child.parentNode;
-    return Array.prototype.indexOf.call(parent.children, child);
+    if (parent && parent.children) {
+        return Array.prototype.indexOf.call(parent.children, child);
+    } else {
+        return -1;
+    }
 }
 
 /***/ }),
@@ -4019,15 +4031,6 @@ function getOptions(ownerDocument, config) {
     };
 }
 
-function cloneCanvas(oldCanvas) {
-    var newCanvas = document.createElement('canvas');
-    var context = newCanvas.getContext('2d');
-    newCanvas.width = oldCanvas.width;
-    newCanvas.height = oldCanvas.height;
-    context.drawImage(oldCanvas, 0, 0);
-    return newCanvas;
-}
-
 var html2canvas = function html2canvas(element, conf) {
     var config = conf || {};
     var logger = new _Logger2.default(typeof config.logging === 'boolean' ? config.logging : true);
@@ -4056,8 +4059,8 @@ var html2canvas = function html2canvas(element, conf) {
         }
         return result;
     } else {
-        if (true && !config.resolveCanvases && typeof config.onrendered === 'function') {
-            logger.error('onrendered option is not provided, you must use it to get rendered data if resolveCanvases is set to true');
+        if (true && typeof config.onrendered !== 'function') {
+            logger.error('onrendered option must be provided on rendering multiple elements');
         }
         var elements = Array.prototype.slice.call(element);
         for (var i = 0; i < elements.length; i++) {
@@ -4069,32 +4072,24 @@ var html2canvas = function html2canvas(element, conf) {
         var _defaultOptions = getOptions(elements[0].ownerDocument, config);
         var options = _extends({}, _defaultOptions, config);
 
-        var cloner = null,
-            iFrameContainerRef = null;
+        var cloner = void 0,
+            iFrameContainerRef = void 0;
         var _removeContainer = elements.length > 1 ? false : options.removeContainer;
         var _result = (0, _Window.renderElement)(elements[0], _extends({}, options, { removeContainer: _removeContainer }), logger, function (c, iframe) {
             cloner = c;
             iFrameContainerRef = iframe;
         }).then(function (canvas) {
             var chain = null;
-            if (options.resolveCanvases) {
-                chain = Promise.resolve([cloneCanvas(canvas)]);
-            } else {
-                options.onrendered(canvas) || Promise.reject('Rendering was stopped by request');
-                chain = Promise.resolve(1);
-            }
+
+            options.onrendered(canvas) || Promise.reject('Rendering was stopped by request');
+            chain = Promise.resolve(1);
 
             var _loop = function _loop(_i) {
                 var removeContainer = _i < elements.length - 1 ? false : options.removeContainer;
                 var idx = _i;
                 chain = chain.then(function (canvases) {
-                    return (0, _Window.renderElement)(elements[idx], _extends({}, options, { removeContainer: removeContainer }), logger, null, cloner, iFrameContainerRef).then(function (canvas) {
-                        if (options.resolveCanvases) {
-                            canvases.push(cloneCanvas(canvas));
-                            return canvases;
-                        } else {
-                            return options.onrendered(canvas) ? canvases++ : Promise.reject('Rendering was stopped by request');
-                        }
+                    return (0, _Window.renderElement)(elements[idx], _extends({}, options, { removeContainer: removeContainer }), logger, undefined, cloner, iFrameContainerRef).then(function (canvas) {
+                        return options.onrendered(canvas) ? canvases++ : Promise.reject('Rendering was stopped by request');
                     });
                 });
             };

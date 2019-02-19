@@ -618,7 +618,7 @@ var serializeDoctype = function serializeDoctype(doctype) {
     return str;
 };
 
-function getParentNodeSelector(element) {
+function getParentNodeSelector(child) {
     var path = '',
         i,
         innerText,
@@ -626,29 +626,41 @@ function getParentNodeSelector(element) {
         selector,
         classes;
 
-    for (i = 0; element && element.nodeType == 1; element = element.parentNode, i++) {
-        if (i == 0) continue;
-        innerText = element.childNodes.length === 0 ? element.innerHTML : '';
-        tag = element.tagName.toLowerCase();
-        classes = element.className;
+    if (child && child.nodeType && child.nodeType == 1 && child.parentNode) {
+        var _element = child.parentNode;
+        while (_element && _element.nodeType == 1) {
+            var _tag = _element.nodeName.toLowerCase();
+            // $FlowFixMe
+            var _classes = _element.className;
+            // $FlowFixMe
+            var id = _element.id;
 
-        if (tag === 'html' || tag === 'body') {
-            continue;
-        }
+            if (_tag === 'html' || _tag === 'body') {
+                return _tag + ' ' + path;
+            }
 
-        if (element.id !== '') {
-            selector = '#' + element.id;
-        } else if (classes.length > 0) {
-            selector = tag + '.' + classes.replace(/ /g, '.');
-        } else {
-            selector = tag;
+            if (id !== '') {
+                // $FlowFixMe
+                selector = '#' + id;
+            } else if (_classes.length > 0) {
+                selector = _tag + '.' + _classes.replace(/ /g, '.');
+            } else {
+                selector = _tag;
+            }
+            path = ' ' + selector + path;
+            _element = _element.parentNode;
         }
-        path = ' ' + selector + path;
+    } else {
+        throw new Error('Element for rendering is not specified');
     }
     return path;
 }
 
 function getChildNodeIndex(child) {
     var parent = child.parentNode;
-    return Array.prototype.indexOf.call(parent.children, child);
+    if (parent && parent.children) {
+        return Array.prototype.indexOf.call(parent.children, child);
+    } else {
+        return -1;
+    }
 }
